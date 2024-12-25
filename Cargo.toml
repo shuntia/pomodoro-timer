@@ -1,0 +1,12 @@
+[package]
+name = "pomodoro-timer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rodio = "0.20.1"  # For playing music
+tokio = { version = "1.42.0", features = ["full"] }  # For async timer functionality
+eframe = "0.30.0"  # For displaying the timer
+egui_extras = "0.30.0"  # For displaying the timer
+env_logger = "0.11.6"  # For logging
+dirs = "5.0.1"
