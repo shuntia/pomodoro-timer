@@ -14,6 +14,7 @@ pomodoro-timer
 ├── src
 │   ├── main.rs        # Entry point of the application
 │   ├── timer.rs       # Timer logic for the Pomodoro technique
+│   ├── window.rs      # Window for the Pomodoro timer
 │   └── music.rs       # Music player functionality
 ├── Cargo.toml         # Project configuration file
 └── README.md          # Project documentation
