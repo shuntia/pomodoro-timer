@@ -1,0 +1,6 @@
+module = "icon"
+
+[icons]
+skip_back    = "skip-back"
+skip_forward = "skip-forward"
+settings     = "settings"
