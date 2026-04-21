@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod icon;
 mod music;
 mod timer;
 
@@ -14,7 +15,8 @@ fn main() -> iced::Result {
     iced::application(app::PomodoroApp::new, app::PomodoroApp::update, app::PomodoroApp::view)
         .title(app::PomodoroApp::title)
         .subscription(app::PomodoroApp::subscription)
-        .theme(|_: &app::PomodoroApp| iced::Theme::Dark)
+        .theme(|app: &app::PomodoroApp| app.detected_theme.clone())
+        .font(icon::FONT)
         .centered()
         .run()
 }

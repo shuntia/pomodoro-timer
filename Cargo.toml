@@ -3,10 +3,17 @@ name = "pomodoro-timer"
 version = "0.2.0"
 edition = "2021"
 
+[features]
+# Enable GStreamer-based video wallpaper + GPU blur.
+# Requires GStreamer ≥ 1.22 and gst-plugins-bad (for gleffects) at runtime.
+# Supported on Linux and macOS (with Homebrew GStreamer); not enabled on Windows by default.
+default = ["video"]
+video = ["dep:gstreamer", "dep:gstreamer-app", "dep:iced_video_player"]
+
 [dependencies]
 iced = { version = "0.14", features = ["canvas", "image", "tokio"] }
 iced_core = "0.14.0"
-iced_video_player = "0.6"
+iced_video_player = { version = "0.6", optional = true }
 url = "2"
 rodio = "0.20.1"
 dirs = "5.0.1"
@@ -15,3 +22,15 @@ toml = "0.8"
 image = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rfd = "0.17.2"
+dark-light = "2.0.0"
+lofty = "0.24.0"
+tokio = { version = "1", features = ["rt"] }
+gstreamer = { version = "0.23", optional = true }
+gstreamer-app = { version = "0.23", optional = true }
+ttf-parser = "0.24"
+fontdb = "0.23"
+
+[build-dependencies]
+iced_lucide = "0.1.0"
+

@@ -45,6 +45,10 @@ impl Timer {
         self.is_running
     }
 
+    pub fn is_idle(&self) -> bool {
+        !self.is_running && self.paused_at.is_none()
+    }
+
     pub fn check_time(&self) -> f64 {
         let elapsed = if self.is_running {
             self.start_time.elapsed().as_secs_f64()
