@@ -1,3 +1,4 @@
+use lofty::file::AudioFile as _;
 use rodio::{Decoder, OutputStream, Sink};
 use std::collections::HashMap;
 use std::fs::File;
@@ -24,6 +25,8 @@ pub struct MusicPlayer {
     sink: Option<Arc<Mutex<Sink>>>,
     pub is_playing: bool,
     saved_positions: HashMap<usize, Duration>,
+    pub shuffle: bool,
+    track_duration: Option<Duration>,
 }
 
 impl MusicPlayer {
@@ -35,6 +38,8 @@ impl MusicPlayer {
             sink: None,
             is_playing: false,
             saved_positions: HashMap::new(),
+            shuffle: false,
+            track_duration: None,
         }
     }
 
@@ -106,6 +111,10 @@ impl MusicPlayer {
             }
             sink.play();
             self.sink = Some(Arc::new(Mutex::new(sink)));
+            self.track_duration = self.files.get(self.current_index)
+                .and_then(|p| lofty::read_from_path(p).ok())
+                .map(|tagged| tagged.properties().duration())
+                .filter(|d| !d.is_zero());
         } else if let Some(ref sink) = self.sink {
             sink.lock().unwrap().play();
         }
@@ -129,7 +138,19 @@ impl MusicPlayer {
         }
         self.sink = None;
         self._stream = None;
+        self.track_duration = None;
         self.is_playing = false;
+    }
+
+    pub fn track_progress(&self) -> Option<f32> {
+        let duration = self.track_duration?;
+        let sink = self.sink.as_ref()?;
+        let pos = sink.lock().unwrap().get_pos();
+        let total_secs = duration.as_secs_f32();
+        if total_secs <= 0.0 {
+            return None;
+        }
+        Some((pos.as_secs_f32() / total_secs).clamp(0.0, 1.0))
     }
 
     pub fn next_track(&mut self) {
@@ -140,7 +161,17 @@ impl MusicPlayer {
         let old_index = self.current_index;
         self.stop();
         self.saved_positions.remove(&old_index);
-        self.current_index = (self.current_index + 1) % self.files.len();
+        if self.shuffle && self.files.len() > 1 {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let mut next = rng.gen_range(0..self.files.len());
+            if next == old_index {
+                next = (next + 1) % self.files.len();
+            }
+            self.current_index = next;
+        } else {
+            self.current_index = (self.current_index + 1) % self.files.len();
+        }
         if was_playing && !self.current_file_is_video() {
             self.play();
         }

@@ -30,6 +30,7 @@ gstreamer = { version = "0.23", optional = true }
 gstreamer-app = { version = "0.23", optional = true }
 ttf-parser = "0.24"
 fontdb = "0.23"
+rand = "0.8"
 
 [build-dependencies]
 iced_lucide = "0.1.0"

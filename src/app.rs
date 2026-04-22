@@ -86,30 +86,17 @@ fn timer_font_to_iced(f: TimerFont, custom_name: Option<&'static str>) -> iced::
     }
 }
 
-fn font_family_name(bytes: &[u8]) -> Option<String> {
-    let face = ttf_parser::Face::parse(bytes, 0).ok()?;
-    face.names()
-        .into_iter()
-        .filter(|n| n.name_id == ttf_parser::name_id::FAMILY)
-        .find_map(|n| {
-            if n.is_unicode() {
-                let s: String = char::decode_utf16(
-                    n.name.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])),
-                )
-                .filter_map(Result::ok)
-                .collect();
-                if s.is_empty() { None } else { Some(s) }
-            } else {
-                std::str::from_utf8(n.name).ok().map(|s| s.to_string())
-            }
-        })
-}
-
-/// Read the family name from a TTF/OTF file without loading its bytes into iced.
-/// Used only to pre-fill the font-name text field when the user browses for a file.
-fn extract_font_name_from_file(path: &str) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    font_family_name(&bytes)
+fn enumerate_system_fonts() -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    for face in db.faces() {
+        if let Some((name, _)) = face.families.first() {
+            names.insert(name.clone());
+        }
+    }
+    names.into_iter().collect()
 }
 
 fn leak_font_name(name: &str) -> &'static str {
@@ -253,9 +240,10 @@ pub struct PomodoroApp {
     s_break_music_dir: String,
     s_accent_hex: String,
     s_break_hex: String,
-    s_timer_font: TimerFont,
-    s_custom_font_name: String,
+    s_font_choice: String,
+    s_timer_opacity: String,
     s_mode_font_size_scale: String,
+    system_fonts: Vec<String>,
     s_mode_font_color_hex: String,
     s_mode_font_opacity: String,
     s_blur_intensity: String,
@@ -295,16 +283,15 @@ pub enum Message {
     BreakMusicDirInput(String),
     AccentColorInput(String),
     BreakColorInput(String),
-    TimerFontSelected(TimerFont),
+    FontChoiceSelected(String),
+    TimerOpacityInput(String),
+    ShuffleToggled,
     PickMainMusicDir,
     PickBreakMusicDir,
     PickWallpaperFile,
-    PickFontFile,
     MainMusicDirPicked(Option<String>),
     BreakMusicDirPicked(Option<String>),
     WallpaperFilePicked(Option<String>),
-    FontFilePicked(Option<String>),
-    CustomFontNameInput(String),
     ModeFontSizeScaleInput(String),
     ModeFontColorInput(String),
     ModeFontOpacityInput(String),
@@ -339,6 +326,8 @@ impl PomodoroApp {
         let mut break_music = MusicPlayer::new();
         main_music.load_dir(std::path::Path::new(&config.main_music_dir));
         break_music.load_dir(std::path::Path::new(&config.break_music_dir));
+        main_music.shuffle = config.shuffle_enabled;
+        break_music.shuffle = config.shuffle_enabled;
 
         let blurred_wallpaper = if config.wallpaper_type == WallpaperType::Static {
             load_blurred_image(&config.wallpaper_path, config.blur_intensity)
@@ -360,9 +349,14 @@ impl PomodoroApp {
         let s_break_music_dir = config.break_music_dir.clone();
         let s_accent_hex = to_hex_color(config.accent_color);
         let s_break_hex = to_hex_color(config.break_color);
-        let s_timer_font = config.timer_font;
-        let s_custom_font_name = config.custom_font_name.clone();
+        let s_font_choice = if config.timer_font == TimerFont::Custom && !config.custom_font_name.is_empty() {
+            config.custom_font_name.clone()
+        } else {
+            config.timer_font.label().to_string()
+        };
+        let s_timer_opacity = config.timer_opacity.to_string();
         let s_mode_font_size_scale = config.mode_font_size_scale.to_string();
+        let system_fonts = enumerate_system_fonts();
         let s_mode_font_color_hex = to_hex_color(config.mode_font_color);
         let s_mode_font_opacity = config.mode_font_opacity.to_string();
         let s_blur_intensity = config.blur_intensity.to_string();
@@ -423,9 +417,10 @@ impl PomodoroApp {
             s_break_music_dir,
             s_accent_hex,
             s_break_hex,
-            s_timer_font,
-            s_custom_font_name,
+            s_font_choice,
+            s_timer_opacity,
             s_mode_font_size_scale,
+            system_fonts,
             s_mode_font_color_hex,
             s_mode_font_opacity,
             s_blur_intensity,
@@ -635,8 +630,12 @@ impl PomodoroApp {
                 self.s_break_music_dir = self.config.break_music_dir.clone();
                 self.s_accent_hex = to_hex_color(self.config.accent_color);
                 self.s_break_hex = to_hex_color(self.config.break_color);
-                self.s_timer_font = self.config.timer_font;
-                self.s_custom_font_name = self.config.custom_font_name.clone();
+                self.s_font_choice = if self.config.timer_font == TimerFont::Custom && !self.config.custom_font_name.is_empty() {
+                    self.config.custom_font_name.clone()
+                } else {
+                    self.config.timer_font.label().to_string()
+                };
+                self.s_timer_opacity = self.config.timer_opacity.to_string();
                 self.s_mode_font_size_scale = self.config.mode_font_size_scale.to_string();
                 self.s_mode_font_color_hex = to_hex_color(self.config.mode_font_color);
                 self.s_mode_font_opacity = self.config.mode_font_opacity.to_string();
@@ -664,7 +663,14 @@ impl PomodoroApp {
             Message::BreakMusicDirInput(s) => self.s_break_music_dir = s,
             Message::AccentColorInput(s) => self.s_accent_hex = s,
             Message::BreakColorInput(s) => self.s_break_hex = s,
-            Message::TimerFontSelected(f) => self.s_timer_font = f,
+            Message::FontChoiceSelected(s) => self.s_font_choice = s,
+            Message::TimerOpacityInput(s) => self.s_timer_opacity = s,
+            Message::ShuffleToggled => {
+                self.config.shuffle_enabled = !self.config.shuffle_enabled;
+                self.main_music.shuffle = self.config.shuffle_enabled;
+                self.break_music.shuffle = self.config.shuffle_enabled;
+                self.config.save();
+            }
 
             Message::PickMainMusicDir => {
                 return Task::perform(
@@ -722,30 +728,6 @@ impl PomodoroApp {
                 }
             }
 
-            Message::PickFontFile => {
-                return Task::perform(
-                    async {
-                        rfd::AsyncFileDialog::new()
-                            .set_title("Pick Timer Font")
-                            .add_filter("Fonts", &["ttf", "otf"])
-                            .pick_file()
-                            .await
-                            .map(|h| h.path().to_string_lossy().into_owned())
-                    },
-                    Message::FontFilePicked,
-                );
-            }
-
-            Message::FontFilePicked(p) => {
-                if let Some(path) = p {
-                    // Extract the family name from the TTF/OTF to pre-fill the name field.
-                    if let Some(name) = extract_font_name_from_file(&path) {
-                        self.s_custom_font_name = name;
-                    }
-                }
-            }
-
-            Message::CustomFontNameInput(s) => self.s_custom_font_name = s,
             Message::ModeFontSizeScaleInput(s) => self.s_mode_font_size_scale = s,
             Message::ModeFontColorInput(s) => self.s_mode_font_color_hex = s,
             Message::ModeFontOpacityInput(s) => self.s_mode_font_opacity = s,
@@ -816,8 +798,25 @@ impl PomodoroApp {
                 if let Some(c) = parse_hex_color(&self.s_break_hex) {
                     self.config.break_color = c;
                 }
-                self.config.timer_font = self.s_timer_font;
-                self.config.custom_font_name = self.s_custom_font_name.clone();
+                let (timer_font, custom_name_str) = match self.s_font_choice.as_str() {
+                    "Default" => (TimerFont::Default, String::new()),
+                    "Monospace" => (TimerFont::Monospace, String::new()),
+                    "Serif" => (TimerFont::Serif, String::new()),
+                    "Sans-Serif" => (TimerFont::SansSerif, String::new()),
+                    "Cursive" => (TimerFont::Cursive, String::new()),
+                    "Fantasy" => (TimerFont::Fantasy, String::new()),
+                    name => (TimerFont::Custom, name.to_string()),
+                };
+                self.config.timer_font = timer_font;
+                self.config.custom_font_name = custom_name_str.clone();
+                self.custom_font_name = if timer_font == TimerFont::Custom && !custom_name_str.is_empty() {
+                    Some(leak_font_name(&custom_name_str))
+                } else {
+                    None
+                };
+                if let Ok(v) = self.s_timer_opacity.parse::<f32>() {
+                    self.config.timer_opacity = v.clamp(0.0, 1.0);
+                }
                 if let Ok(v) = self.s_mode_font_size_scale.parse::<f32>() {
                     self.config.mode_font_size_scale = v.clamp(0.3, 3.0);
                 }
@@ -848,19 +847,14 @@ impl PomodoroApp {
                 self.config.countdown_sound_path = self.s_countdown_path.clone();
                 self.config.bell_sound_path = self.s_bell_path.clone();
 
-                // Validate and apply custom font family name.
-                if self.s_timer_font == TimerFont::Custom && !self.s_custom_font_name.is_empty() {
-                    self.custom_font_name = Some(leak_font_name(&self.s_custom_font_name));
-                } else if self.s_timer_font != TimerFont::Custom {
-                    self.custom_font_name = None;
-                }
-
                 self.main_music = MusicPlayer::new();
                 self.break_music = MusicPlayer::new();
                 self.main_music
                     .load_dir(std::path::Path::new(&self.config.main_music_dir));
                 self.break_music
                     .load_dir(std::path::Path::new(&self.config.break_music_dir));
+                self.main_music.shuffle = self.config.shuffle_enabled;
+                self.break_music.shuffle = self.config.shuffle_enabled;
 
                 self.timer = Timer::new(work_time);
                 self.break_timer = Timer::new(break_time);
@@ -1178,6 +1172,7 @@ impl PomodoroApp {
 
         // Canvas fills the whole window; circle scales to fit
         let [mr, mg, mb] = self.config.mode_font_color;
+        let hide_cursor = self.last_mouse_move.elapsed().as_secs_f64() >= CONTROLS_IDLE_SECS;
         let timer_canvas: Element<Message> = canvas(TimerCanvas {
             arc_fill: self.arc_fill,
             arc_elapsed: self.arc_elapsed,
@@ -1191,6 +1186,8 @@ impl PomodoroApp {
             mode_font_color: Color::from_rgba(mr, mg, mb, self.config.mode_font_opacity),
             ring_thickness_scale: self.config.ring_thickness_scale,
             ring_bg_opacity: self.config.ring_bg_opacity,
+            timer_opacity: self.config.timer_opacity,
+            hide_cursor,
         })
         .width(Fill)
         .height(Fill)
@@ -1313,22 +1310,39 @@ impl PomodoroApp {
         } else {
             arr_to_color(self.config.accent_color)
         };
+        let player = if self.in_break { &self.break_music } else { &self.main_music };
+        let track_progress = player.track_progress().unwrap_or(self.arc_elapsed);
         let track_bar: Element<Message> = canvas(TrackBar {
-            progress: self.arc_elapsed,
+            progress: track_progress,
             color: bar_color,
         })
         .width(Fill)
         .height(TRACK_BAR_H)
         .into();
 
+        // Shuffle button — bottom right, fades with music controls.
+        let shuffle_opacity = if self.config.shuffle_enabled { mp.max(0.75) } else { mp };
+        let shuffle_btn = button(crate::icon::shuffle().size(16))
+            .on_press(Message::ShuffleToggled)
+            .style(ghost_icon_button(shuffle_opacity))
+            .padding([6, 10]);
+
+        let bottom_row = row![
+            Space::new().width(Fill),
+            container(music_area)
+                .padding(Padding { top: 0.0, right: 0.0, bottom: 10.0, left: 0.0 }),
+            container(shuffle_btn)
+                .width(Fill)
+                .align_x(Horizontal::Right)
+                .padding(Padding { top: 0.0, right: 12.0, bottom: 10.0, left: 0.0 }),
+        ]
+        .align_y(Vertical::Bottom);
+
         let ui_overlay: Element<Message> = column![
             row![Space::new().width(Fill), cog_btn]
                 .padding(Padding { top: 12.0, right: 12.0, bottom: 0.0, left: 12.0 }),
             Space::new().width(Fill).height(Fill),
-            container(music_area)
-                .width(Fill)
-                .align_x(Horizontal::Center)
-                .padding(Padding { top: 0.0, right: 0.0, bottom: 10.0, left: 0.0 }),
+            bottom_row,
             track_bar,
         ]
         .width(Fill)
@@ -1495,31 +1509,20 @@ impl PomodoroApp {
         ]
         .spacing(10);
 
+        let mut font_options: Vec<String> = vec![
+            "Default".to_string(),
+            "Monospace".to_string(),
+            "Serif".to_string(),
+            "Sans-Serif".to_string(),
+            "Cursive".to_string(),
+            "Fantasy".to_string(),
+        ];
+        font_options.extend(self.system_fonts.iter().cloned());
         let font_picker = pick_list(
-            TimerFont::all(),
-            Some(self.s_timer_font),
-            Message::TimerFontSelected,
+            font_options,
+            Some(self.s_font_choice.clone()),
+            Message::FontChoiceSelected,
         );
-        let custom_font_row: Element<_> = if self.s_timer_font == TimerFont::Custom {
-            column![
-                text("Font family name (must be system-installed)").size(12)
-                    .color(Color::from_rgba(0.6, 0.6, 0.6, 1.0)),
-                row![
-                    text_input("e.g. JetBrains Mono", &self.s_custom_font_name)
-                        .on_input(Message::CustomFontNameInput)
-                        .width(Fill),
-                    button("Browse TTF…")
-                        .on_press(Message::PickFontFile)
-                        .style(ghost_button)
-                        .padding([6, 12]),
-                ]
-                .spacing(8),
-            ]
-            .spacing(4)
-            .into()
-        } else {
-            Space::new().into()
-        };
 
         let mode_font_color_preview = color_swatch(
             parse_hex_color(&self.s_mode_font_color_hex)
@@ -1529,11 +1532,17 @@ impl PomodoroApp {
         let font_section = column![
             section_label("Timer font"),
             labeled_row("Font", font_picker.into()),
-            custom_font_row,
             labeled_row(
                 "Font size scale  (0.3–3.0)",
                 text_input("1.0", &self.s_font_size_scale)
                     .on_input(Message::FontSizeScaleInput)
+                    .width(80)
+                    .into(),
+            ),
+            labeled_row(
+                "Timer opacity  (0–1)",
+                text_input("1.0", &self.s_timer_opacity)
+                    .on_input(Message::TimerOpacityInput)
                     .width(80)
                     .into(),
             ),
@@ -1863,10 +1872,25 @@ struct TimerCanvas {
     mode_font_color: Color,
     ring_thickness_scale: f32,
     ring_bg_opacity: f32,
+    timer_opacity: f32,
+    hide_cursor: bool,
 }
 
 impl Program<Message> for TimerCanvas {
     type State = ();
+
+    fn mouse_interaction(
+        &self,
+        _state: &(),
+        _bounds: Rectangle,
+        _cursor: icedmouse::Cursor,
+    ) -> icedmouse::Interaction {
+        if self.hide_cursor {
+            icedmouse::Interaction::Hidden
+        } else {
+            icedmouse::Interaction::default()
+        }
+    }
 
     fn draw(
         &self,
@@ -1948,7 +1972,7 @@ impl Program<Message> for TimerCanvas {
         frame.fill_text(iced::widget::canvas::Text {
             content: format!("{:02}:{:02}", mins, secs),
             position: center,
-            color: Color::WHITE,
+            color: Color::from_rgba(1.0, 1.0, 1.0, self.timer_opacity.clamp(0.0, 1.0)),
             size: time_font,
             font: self.font,
             align_x: TextAlign::Center,

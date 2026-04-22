@@ -1,6 +1,6 @@
 // Generated automatically by iced_lucide at build time.
 // Do not edit manually.
-// 4c6c4bf6f51b4b64c2276afc39cd4248159873ea23fb7dccc1214bef73ce3f30
+// 4cfdae1a24a79f67eb0a1d905f8308d61bf2461ecd223c2e7b1ef2b85faba8d2
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -11,12 +11,17 @@ pub const FONT: &[u8] = include_bytes!("../fonts/lucide.ttf");
 #[allow(dead_code)]
 pub const ALL_ICONS: &[(&str, &str)] = &[
     ("settings", "\u{E154}"),
+    ("shuffle", "\u{E15E}"),
     ("skip_back", "\u{E15F}"),
     ("skip_forward", "\u{E160}"),
 ];
 
 pub fn settings<'a>() -> Text<'a> {
     icon("\u{E154}")
+}
+
+pub fn shuffle<'a>() -> Text<'a> {
+    icon("\u{E15E}")
 }
 
 pub fn skip_back<'a>() -> Text<'a> {

@@ -66,6 +66,9 @@ fn default_bg_tint() -> [f32; 3] {
 fn default_bg_tint_strength() -> f32 {
     0.47
 }
+fn default_timer_opacity() -> f32 {
+    1.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -174,6 +177,12 @@ pub struct Config {
     pub countdown_sound_path: String,
     #[serde(default)]
     pub bell_sound_path: String,
+    /// Opacity of the timer digits (0.0–1.0, default 1.0).
+    #[serde(default = "default_timer_opacity")]
+    pub timer_opacity: f32,
+    /// Whether shuffle is enabled for music playback.
+    #[serde(default)]
+    pub shuffle_enabled: bool,
 }
 
 impl Default for Config {
@@ -201,6 +210,8 @@ impl Default for Config {
             bg_tint_strength: default_bg_tint_strength(),
             countdown_sound_path: String::new(),
             bell_sound_path: String::new(),
+            timer_opacity: default_timer_opacity(),
+            shuffle_enabled: false,
         }
     }
 }
